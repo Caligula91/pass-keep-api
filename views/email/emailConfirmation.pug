@@ -1,0 +1,16 @@
+extends baseEmail
+
+block content
+  p Hi #{firstName},
+  p Thank you for creating account. Please confirm your email by clicking on the button bellow:
+  table.btn.btn-primary(role='presentation', border='0', cellpadding='0', cellspacing='0')
+    tbody
+      tr
+        td(align='left')
+          table(role='presentation', border='0', cellpadding='0', cellspacing='0')
+            tbody
+              tr
+                td
+                  a(href=`${url}`, target='_blank') Confirm Email
+  p If you didn't create account#{' '}
+    a(href=`${url}/delete`) click here
