@@ -97,7 +97,6 @@ exports.updateAccount = catchAsync(async (req, res, next) => {
       runValidators: true,
     }
   );
-
   // CHECK IF ACCOUNT NAME ALREADY EXISTS OR USER/ACCOUN NOT FOUND
   if (!user) {
     const testUser = await User.findOne({
@@ -106,8 +105,7 @@ exports.updateAccount = catchAsync(async (req, res, next) => {
     });
     if (!testUser) return next(new AppError('User or Account not found', 404));
     return next(
-      new AppError('Account name already exists, choose another name'),
-      400
+      new AppError('Account name already exists, choose another name', 400)
     );
   }
 
