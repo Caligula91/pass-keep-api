@@ -23,8 +23,13 @@ const sendResponseWithToken = (user, req, res, statusCode) => {
     // secure: process.env.NODE_ENV === 'production',
   };
   res.cookie('jwt', token, cookieOptions);
+
+  // setting to undefined sensitive data
   user.password = undefined;
   user.status = undefined;
+  user.passwordCurrent = undefined;
+
+  // sending response
   res.status(statusCode).json({
     status: 'success',
     token,
@@ -320,6 +325,7 @@ exports.updatePassword = catchAsync(async (req, res, next) => {
   }
 
   // 3) If so, update password
+  user.passwordCurrent = passwordCurrent;
   user.password = password;
   user.passwordConfirm = passwordConfirm;
   await user.save();
