@@ -2,7 +2,6 @@ const crypto = require('crypto');
 const mongoose = require('mongoose');
 const validator = require('validator');
 const bcrypt = require('bcrypt');
-const AppError = require('../utils/AppError');
 const { allImagesSet } = require('../utils/images');
 
 const userSchema = new mongoose.Schema({
@@ -125,13 +124,6 @@ const userSchema = new mongoose.Schema({
 /**
  * PASSWORD RELATED
  */
-userSchema.pre('save', function (next) {
-  if (!this.isModified('password') || this.isNew) return next();
-  if (this.passwordCurrent === this.get('password'))
-    return next(new AppError('New password cannot be the same as old', 400));
-  next();
-});
-
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
   this.password = await bcrypt.hash(this.password, 12);
