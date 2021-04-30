@@ -11,7 +11,8 @@ const router = express.Router();
 router.post('/signup', authController.signup);
 router
   .route('/email-confirmation/:emailToken')
-  .get(authController.verifyEmail)
+  .get(authController.isEmailTokenValid)
+  .post(authController.verifyEmail)
   .delete(authController.deletePendingUser);
 router.post(
   '/resend-email-confirm',
@@ -35,6 +36,11 @@ router.post(
   userController.deleteMe
 );
 router.patch('/me/update-password', authController.updatePassword);
+router.patch(
+  '/me/reset-pin',
+  authController.checkPassword,
+  authController.resetPin
+);
 
 /**
  * ACCOUNT RELATED ROUTES
@@ -44,7 +50,7 @@ router
   .put(accountController.handleImageName, accountController.addAccount);
 router
   .route('/account/:accountId')
-  .get(accountController.getAccountPassword)
+  .post(authController.checkPin, accountController.getAccountPassword)
   .patch(accountController.handleImageName, accountController.updateAccount)
   .delete(accountController.deleteAccount);
 

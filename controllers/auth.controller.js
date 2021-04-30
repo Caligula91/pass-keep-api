@@ -27,7 +27,6 @@ const sendResponseWithToken = (user, req, res, statusCode) => {
   // setting to undefined sensitive data
   user.password = undefined;
   user.status = undefined;
-  user.passwordCurrent = undefined;
 
   // sending response
   res.status(statusCode).json({
@@ -106,29 +105,50 @@ exports.signup = catchAsync(async (req, res, next) => {
   });
 });
 
-exports.verifyEmail = catchAsync(async (req, res, next) => {
+exports.isEmailTokenValid = catchAsync(async (req, res, next) => {
   const { emailToken } = req.params;
+  // find user with email token
   const confirmationToken = crypto
     .createHash('sha256')
     .update(emailToken)
     .digest('hex');
-  const user = await User.findOneAndUpdate(
-    {
-      confirmationToken,
-      confirmationTokenExpires: { $gt: Date.now() },
-    },
-    {
-      $unset: {
-        confirmationToken: undefined,
-        confirmationTokenExpires: undefined,
-        nextReSendPosible: undefined,
-        reSendCount: undefined,
-      },
-      status: 'Active',
-    },
-    { new: true, runValidators: true, context: 'query' }
-  );
-  if (!user) return next(new AppError('User verified or invalid token.', 400));
+  const user = await User.findOne({
+    confirmationToken,
+    confirmationTokenExpires: { $gt: Date.now() },
+  });
+  if (!user) return next(new AppError('Invalid email token', 400));
+  res.status(200).json({
+    status: 'success',
+    message: 'valid email token',
+  });
+});
+
+exports.verifyEmail = catchAsync(async (req, res, next) => {
+  const { pin, pinConfirm } = req.body;
+  const { emailToken } = req.params;
+
+  // find user with email token
+  const confirmationToken = crypto
+    .createHash('sha256')
+    .update(emailToken)
+    .digest('hex');
+  let user = await User.findOne({
+    confirmationToken,
+    confirmationTokenExpires: { $gt: Date.now() },
+  }).select('-password -passwordConfirm');
+  if (!user) return next(new AppError('Invalid email token', 400));
+
+  // update user with new pin and set status to Active
+  user.confirmationToken = undefined;
+  user.confirmationTokenExpires = undefined;
+  user.nextReSendPosible = undefined;
+  user.reSendCount = undefined;
+  user.status = 'Active';
+  user.pin = pin;
+  user.pinConfirm = pinConfirm;
+  user = await user.save();
+
+  // send email
   const url = `${process.env.WEBSITE_DOMAIN}`;
   try {
     await new Email(user, url).sendWelcome();
@@ -288,7 +308,7 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
   const user = await User.findOne({
     passwordResetToken: hashedToken,
     passwordResetExpires: { $gt: Date.now() },
-  }).select('+passwordResetToken +passwordResetExpires');
+  }).select('+passwordResetToken +passwordResetExpires -pin -pinConfirm');
 
   // 2) If token has not expired, and there is user, set the new password
   if (!user) {
@@ -317,7 +337,9 @@ exports.updatePassword = catchAsync(async (req, res, next) => {
       )
     );
   // 1) Get user from collection
-  const user = await User.findById(req.user.id).select('+password');
+  const user = await User.findById(req.user.id).select(
+    '+password -pin -pinConfirm'
+  );
 
   // 2) Check if POSTed current password is correct
   if (!(await user.isCorrectPassword(passwordCurrent, user.password))) {
@@ -328,7 +350,6 @@ exports.updatePassword = catchAsync(async (req, res, next) => {
     return next(new AppError('New password cannot be the same as old', 400));
 
   // 3) If so, update password
-  user.passwordCurrent = passwordCurrent;
   user.password = password;
   user.passwordConfirm = passwordConfirm;
   await user.save();
@@ -355,8 +376,83 @@ exports.deletePendingUser = catchAsync(async (req, res, next) => {
 
 exports.checkPassword = catchAsync(async (req, res, next) => {
   const { password } = req.body;
+  if (!password)
+    return next(
+      new AppError(
+        'Password required, please provide password and try again',
+        400
+      )
+    );
   const user = await User.findById(req.user._id).select('+password');
   const correctPassword = await user.isCorrectPassword(password, user.password);
   if (!correctPassword) return next(new AppError('Incorrect Password.', 400));
   next();
+});
+
+const handleWrongPin = async (user) => {
+  if (
+    user.pinLastWrongDate &&
+    user.pinLastWrongDate.getTime() > Date.now() - 1000 * 60 * 60
+  ) {
+    user = await User.findByIdAndUpdate(
+      user._id,
+      {
+        $inc: { pinTries: -1 },
+        pinLastWrongDate: Date.now(),
+      },
+      { new: true }
+    ).select('+pinTries');
+    return user.pinTries;
+  }
+  user = await User.findByIdAndUpdate(
+    user._id,
+    {
+      pinTries: 3,
+      pinLastWrongDate: Date.now(),
+    },
+    { new: true }
+  ).select('+pinTries');
+  return user.pinTries;
+};
+
+exports.checkPin = catchAsync(async (req, res, next) => {
+  const { pin } = req.body;
+  if (!pin) return next(new AppError('Pin required for this action', 400));
+  const user = await User.findById(req.user._id).select(
+    '+pin +pinActive +pinLastWrongDate +pinTries'
+  );
+  if (!user.pinActive)
+    return next(
+      new AppError('Pin has been blocked, please reset your pin', 401)
+    );
+  const correctPin = await user.isCorrectPin(pin, user.pin);
+  if (!correctPin) {
+    const retries = await handleWrongPin(user);
+    if (retries === 0) {
+      await User.findByIdAndUpdate(user._id, {
+        pinActive: false,
+      });
+      return next(
+        new AppError('Pin has been blocked, please reset your pin', 401)
+      );
+    }
+    return next(
+      new AppError(`Wrong pin. You have ${retries} retries left`, 400)
+    );
+  }
+  next();
+});
+
+exports.resetPin = catchAsync(async (req, res, next) => {
+  const { pin, pinConfirm } = req.body;
+  const user = await User.findById(req.user._id).select(
+    '-password -passwordConfirm'
+  );
+  user.pin = pin;
+  user.pinConfirm = pinConfirm;
+  await user.save();
+  res.status(200).json({
+    status: 'success',
+    message: 'Your pin has been reset successfully.',
+  });
 });

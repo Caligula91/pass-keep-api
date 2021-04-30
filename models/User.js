@@ -119,6 +119,57 @@ const userSchema = new mongoose.Schema({
   ],
   lastCheckedAccount: String,
   lastCheckedAccountDate: Date,
+  // PIN
+  pin: {
+    type: String,
+    required: true,
+    minlength: [4, 'Size of pin is 4 digits'],
+    maxlength: [4, 'Size of pin is 4 digits'],
+    validate: [validator.isNumeric, 'Only digits are allowed in pin'],
+    select: false,
+  },
+  pinConfirm: {
+    type: String,
+    required: true,
+    validate: {
+      // This only works on CREATE and SAVE!!!
+      validator: function (el) {
+        return el === this.pin;
+      },
+      message: 'Pins are not the same!',
+    },
+  },
+  pinActive: {
+    type: Boolean,
+    select: false,
+  },
+  pinLastWrongDate: {
+    type: Date,
+    select: false,
+  },
+  pinTries: {
+    type: Number,
+    select: false,
+  },
+});
+
+/**
+ * PIN RELATED
+ */
+userSchema.pre('validate', function (next) {
+  if (!this.isNew) return next();
+  this.pin = '0000';
+  this.pinConfirm = '0000';
+  next();
+});
+
+userSchema.pre('save', async function (next) {
+  if (!this.isModified('pin')) return next();
+  this.pin = await bcrypt.hash(this.pin, 12);
+  this.pinActive = true;
+  this.pinLastWrongDate = undefined;
+  this.pinConfirm = undefined;
+  next();
 });
 
 /**
@@ -169,6 +220,10 @@ userSchema.pre(/^find/, function (next) {
 /**
  * INSTANCE METHODS
  */
+userSchema.methods.isCorrectPin = async function (candidatePin, userPin) {
+  return await bcrypt.compare(candidatePin, userPin);
+};
+
 userSchema.methods.isCorrectPassword = async function (
   candidatePassword,
   userPassword
