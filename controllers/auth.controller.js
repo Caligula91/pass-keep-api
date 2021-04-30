@@ -101,7 +101,7 @@ exports.signup = catchAsync(async (req, res, next) => {
   }
   res.status(201).json({
     status: 'success',
-    message: `We sent an email to ${email} to make sure you own it. Please check your inbox and spam folder.`,
+    message: `We sent an email to ${email} to make sure you own it. Please check your inbox and verify your email address.`,
   });
 });
 
@@ -116,7 +116,7 @@ exports.isEmailTokenValid = catchAsync(async (req, res, next) => {
     confirmationToken,
     confirmationTokenExpires: { $gt: Date.now() },
   });
-  if (!user) return next(new AppError('Invalid email token', 400));
+  if (!user) return next(new AppError('Invalid email token.', 400));
   res.status(200).json({
     status: 'success',
     message: 'valid email token',
@@ -136,7 +136,7 @@ exports.verifyEmail = catchAsync(async (req, res, next) => {
     confirmationToken,
     confirmationTokenExpires: { $gt: Date.now() },
   }).select('-password -passwordConfirm');
-  if (!user) return next(new AppError('Invalid email token', 400));
+  if (!user) return next(new AppError('Invalid email token.', 400));
 
   // update user with new pin and set status to Active
   user.confirmationToken = undefined;
@@ -347,7 +347,7 @@ exports.updatePassword = catchAsync(async (req, res, next) => {
   }
 
   if (passwordCurrent === password)
-    return next(new AppError('New password cannot be the same as old', 400));
+    return next(new AppError('New password cannot be the same as old.', 400));
 
   // 3) If so, update password
   user.password = password;
@@ -368,7 +368,7 @@ exports.deletePendingUser = catchAsync(async (req, res, next) => {
     confirmationToken,
     status: 'Pending',
   });
-  if (!user) return next(new AppError('User not found', 404));
+  if (!user) return next(new AppError('User not found.', 404));
   res.status(204).json({
     status: 'success',
   });
@@ -379,7 +379,7 @@ exports.checkPassword = catchAsync(async (req, res, next) => {
   if (!password)
     return next(
       new AppError(
-        'Password required, please provide password and try again',
+        'Password required, please provide password and try again.',
         400
       )
     );
@@ -417,13 +417,13 @@ const handleWrongPin = async (user) => {
 
 exports.checkPin = catchAsync(async (req, res, next) => {
   const { pin } = req.body;
-  if (!pin) return next(new AppError('Pin required for this action', 400));
+  if (!pin) return next(new AppError('Pin required for this action.', 400));
   const user = await User.findById(req.user._id).select(
     '+pin +pinActive +pinLastWrongDate +pinTries'
   );
   if (!user.pinActive)
     return next(
-      new AppError('Pin has been blocked, please reset your pin', 401)
+      new AppError('Pin has been blocked, please reset your pin.', 401)
     );
   const correctPin = await user.isCorrectPin(pin, user.pin);
   if (!correctPin) {
@@ -433,7 +433,7 @@ exports.checkPin = catchAsync(async (req, res, next) => {
         pinActive: false,
       });
       return next(
-        new AppError('Pin has been blocked, please reset your pin', 401)
+        new AppError('Pin has been blocked, please reset your pin.', 401)
       );
     }
     return next(

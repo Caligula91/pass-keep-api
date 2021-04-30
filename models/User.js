@@ -123,8 +123,8 @@ const userSchema = new mongoose.Schema({
   pin: {
     type: String,
     required: true,
-    minlength: [4, 'Size of pin is 4 digits'],
-    maxlength: [4, 'Size of pin is 4 digits'],
+    minlength: [4, 'Pin size must be 4 digits'],
+    maxlength: [4, 'Pin size must be 4 digits'],
     validate: [validator.isNumeric, 'Only digits are allowed in pin'],
     select: false,
   },
