@@ -429,15 +429,20 @@ exports.checkPin = catchAsync(async (req, res, next) => {
   if (!correctPin) {
     const retries = await handleWrongPin(user);
     if (retries === 0) {
-      await User.findByIdAndUpdate(user._id, {
-        pinActive: false,
-      });
+      await User.findByIdAndUpdate(
+        user._id,
+        {
+          pinActive: false,
+          pin: undefined,
+        },
+        { runValidators: false }
+      );
       return next(
         new AppError('Pin has been blocked, please reset your pin.', 401)
       );
     }
     return next(
-      new AppError(`Wrong pin. You have ${retries} retries left`, 400)
+      new AppError(`Wrong pin. You have ${retries} retries left!`, 400)
     );
   }
   next();
