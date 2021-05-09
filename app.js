@@ -10,6 +10,7 @@ const hpp = require('hpp');
 const compression = require('compression');
 const helmet = require('helmet');
 const userRouter = require('./routes/user.routes');
+const accounstRouter = require('./routes/accounts.routes');
 const globalErrorHandler = require('./controllers/error.controller');
 const AppError = require('./utils/AppError');
 const { allImages } = require('./utils/images');
@@ -58,7 +59,6 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 // Get all images path
-
 app.get('/img', (req, res, next) => {
   const hostUrl = `${req.protocol}://${req.get('host')}/img/`;
   res.status(200).json({
@@ -68,6 +68,7 @@ app.get('/img', (req, res, next) => {
 });
 
 app.use('/api/v1/users', userRouter);
+app.use('/api/v1/accounts', accounstRouter);
 app.all('*', (req, res, next) => {
   next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
 });

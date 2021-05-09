@@ -1,7 +1,6 @@
 const express = require('express');
 const authController = require('../controllers/auth.controller');
 const userController = require('../controllers/user.controller');
-const accountController = require('../controllers/account.controller');
 
 const router = express.Router();
 
@@ -41,18 +40,6 @@ router.patch(
   authController.checkPassword,
   authController.resetPin
 );
-
-/**
- * ACCOUNT RELATED ROUTES
- */
-router
-  .route('/account')
-  .put(accountController.handleImageName, accountController.addAccount);
-router
-  .route('/account/:accountId')
-  .post(authController.checkPin, accountController.getAccountPassword)
-  .patch(accountController.handleImageName, accountController.updateAccount)
-  .delete(accountController.deleteAccount);
 
 /**
  * ADMIN ROUTES

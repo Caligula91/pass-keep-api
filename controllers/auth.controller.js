@@ -231,12 +231,12 @@ exports.login = catchAsync(async (req, res, next) => {
       return next(new AppError('Please Verify Your Email!', 403));
     }
     case 'Inactive': {
-      try {
-        const url = `${process.env.WEBSITE_DOMAIN}`;
-        await new Email(user, url).sendWelcomeBack();
-      } catch (error) {
-        storeError('email', error).catch(() => {});
-      }
+      // try {
+      //   const url = `${process.env.WEBSITE_DOMAIN}`;
+      //   await new Email(user, url).sendWelcomeBack();
+      // } catch (error) {
+      //   storeError('email', error).catch(() => {});
+      // }
       const updatedUser = await User.findByIdAndUpdate(
         user.id,
         {

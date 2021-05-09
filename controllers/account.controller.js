@@ -3,6 +3,13 @@ const AppError = require('../utils/AppError');
 const catchAsync = require('../utils/catchAsync');
 const { encrypt, decrypt } = require('../utils/encryption');
 
+exports.getAccounts = catchAsync(async (req, res, next) => {
+  res.status(200).json({
+    status: 'success',
+    accounts: req.user.accounts,
+  });
+});
+
 // image in form of URL
 exports.addAccount = catchAsync(async (req, res, next) => {
   const { name, userEmail, password, image } = req.body;
@@ -45,7 +52,7 @@ exports.getAccountPassword = catchAsync(async (req, res, next) => {
     _id: req.user.id,
     'accounts._id': accountId,
   }).select('+accounts.password +accounts.iv');
-  if (!user) return next(new AppError('User or account not found', 404));
+  if (!user) return next(new AppError('Account not found', 404));
   const account = user.accounts.find(
     (value) => String(value._id) === String(accountId)
   );
