@@ -227,7 +227,7 @@ userSchema.pre(/^find/, function (next) {
  * VIRTUAL PROPERTY - TOTAL ACCOUNTS
  */
 userSchema.virtual('totalAccounts').get(function () {
-  return this.accounts.length;
+  return this.accounts ? this.accounts.length : undefined;
 });
 
 /**
