@@ -133,7 +133,7 @@ exports.ipProtect = (req, res, next) => {
  * REMOVE IP
  */
 exports.removeIp = catchAsync(async (req, res, next) => {
-  const { loggedDeviceId } = req.body;
+  const { loggedDeviceId } = req.params;
   const user = await User.findOneAndUpdate(
     {
       _id: req.user.id,
