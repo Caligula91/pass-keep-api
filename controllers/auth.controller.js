@@ -37,11 +37,20 @@ const sendResponseWithToken = (user, req, res, statusCode) => {
   });
 };
 
+/**
+ * CHECK TRUSTED DEVICE
+ */
+const isTrustedDevice = (device, req) =>
+  device.ip === req.ipInfo.ip && device.platform === req.useragent.platform;
+
 exports.restrictTo = (roles) => (req, res, next) => {
   if (roles.includes(req.user.role)) return next();
   next(new AppError('You are unauthorized to access this route.', 403));
 };
 
+/**
+ * PROTECT ROUTES
+ */
 exports.protect = catchAsync(async (req, res, next) => {
   let token;
   if (
@@ -85,6 +94,68 @@ exports.protect = catchAsync(async (req, res, next) => {
   next();
 });
 
+/**
+ * PROTECT IP
+ */
+exports.ipProtect = (req, res, next) => {
+  const trustedDevice = req.user.loggedDevices
+    ? req.user.loggedDevices.find((device) => isTrustedDevice(device, req))
+    : false;
+
+  // update last activity
+  // no need to await results, update in the background
+  // tolerate 2 mins diff from last activity to increase performance
+  if (
+    trustedDevice &&
+    Date.now() > trustedDevice.lastActivity.getTime() + 2 * 60 * 1000
+  ) {
+    User.findOneAndUpdate(
+      {
+        _id: req.user.id,
+        'loggedDevices._id': trustedDevice.id,
+      },
+      {
+        'loggedDevices.$.lastActivity': Date.now(),
+      },
+      (err) => {
+        if (err) storeError('lastActivity', err).catch(() => {});
+      }
+    );
+  }
+  return trustedDevice
+    ? next()
+    : next(
+        new AppError('Your device is not recognised, please log in again.', 403)
+      );
+};
+
+/**
+ * REMOVE IP
+ */
+exports.removeIp = catchAsync(async (req, res, next) => {
+  const { loggedDeviceId } = req.body;
+  const user = await User.findOneAndUpdate(
+    {
+      _id: req.user.id,
+      'loggedDevices._id': loggedDeviceId,
+    },
+    {
+      $pull: { loggedDevices: { _id: loggedDeviceId } },
+    },
+    {
+      new: true,
+    }
+  );
+  if (!user) return next(new AppError('Device not found', 404));
+  res.status(200).json({
+    status: 'success',
+    message: 'Device removed from logged devices.',
+  });
+});
+
+/**
+ * SIGNUP
+ */
 exports.signup = catchAsync(async (req, res, next) => {
   const { name, password, passwordConfirm, email } = req.body;
   const user = new User({ name, password, passwordConfirm, email });
@@ -105,6 +176,9 @@ exports.signup = catchAsync(async (req, res, next) => {
   });
 });
 
+/**
+ * VERIFY EMAIL
+ */
 exports.isEmailTokenValid = catchAsync(async (req, res, next) => {
   const { emailToken } = req.params;
   // find user with email token
@@ -138,7 +212,7 @@ exports.verifyEmail = catchAsync(async (req, res, next) => {
   }).select('-password -passwordConfirm');
   if (!user) return next(new AppError('Invalid email token.', 400));
 
-  // update user with new pin and set status to Active
+  // set new pin and set status to Active
   user.confirmationToken = undefined;
   user.confirmationTokenExpires = undefined;
   user.nextReSendPosible = undefined;
@@ -146,6 +220,23 @@ exports.verifyEmail = catchAsync(async (req, res, next) => {
   user.status = 'Active';
   user.pin = pin;
   user.pinConfirm = pinConfirm;
+
+  // add logged device to loggedDevices
+  user.loggedDevices = [
+    {
+      ip: req.ipInfo.ip,
+      location:
+        req.ipInfo.country && req.ipInfo.city
+          ? `${req.ipInfo.city}, ${req.ipInfo.country}`
+          : 'unknown',
+      os: req.useragent.os,
+      platform: req.useragent.platform,
+      browser: req.useragent.browser,
+      lastActivity: new Date(Date.now()),
+    },
+  ];
+
+  // update user with new data
   user = await user.save();
 
   // send email
@@ -212,15 +303,41 @@ exports.reSendEmailProtect = catchAsync(async (req, res, next) => {
   next();
 });
 
+exports.deletePendingUser = catchAsync(async (req, res, next) => {
+  const { emailToken } = req.params;
+  const confirmationToken = crypto
+    .createHash('sha256')
+    .update(emailToken)
+    .digest('hex');
+  const user = await User.findOneAndDelete({
+    confirmationToken,
+    status: 'Pending',
+  });
+  if (!user) return next(new AppError('User not found.', 404));
+  res.status(204).json({
+    status: 'success',
+  });
+});
+
+/**
+ * LOGIN
+ */
 exports.login = catchAsync(async (req, res, next) => {
+  // check if email and password are provided
   const { email, password } = req.body;
   if (!email || !password)
     return next(new AppError('Please provide email and password', 400));
+
+  // find user with provided email
   const user = await User.findOne({ email }).select('+password +status');
   if (!user) return next(new AppError('Incorrect email or password.', 400));
+
+  // check password
   const correctPassword = await user.isCorrectPassword(password, user.password);
   if (!correctPassword)
     return next(new AppError('Incorrect email or password.', 400));
+
+  // respond accordingly to user status
   switch (user.status) {
     case 'Banned': {
       return next(
@@ -231,32 +348,131 @@ exports.login = catchAsync(async (req, res, next) => {
       return next(new AppError('Please Verify Your Email!', 403));
     }
     case 'Inactive': {
-      // try {
-      //   const url = `${process.env.WEBSITE_DOMAIN}`;
-      //   await new Email(user, url).sendWelcomeBack();
-      // } catch (error) {
-      //   storeError('email', error).catch(() => {});
-      // }
-      const updatedUser = await User.findByIdAndUpdate(
-        user.id,
-        {
-          status: 'Active',
-        },
-        {
-          new: true,
-        }
-      );
-      sendResponseWithToken(updatedUser, req, res, 200);
+      req.userData = { user, inactive: true };
+      next();
       break;
     }
     case 'Active': {
-      sendResponseWithToken(user, req, res, 200);
+      // check if ip is trusted
+      const trustedDevice = user.loggedDevices
+        ? user.loggedDevices.find((device) => isTrustedDevice(device, req))
+        : false;
+      if (trustedDevice) sendResponseWithToken(user, req, res, 200);
+      else {
+        req.userData = { user };
+        next();
+      }
       break;
     }
     default: {
       return next(
         new AppError('Problem with database, please contact admin.', 500)
       );
+    }
+  }
+});
+
+/**
+ * TRIGGERS ONLY WHEN USER ACCESS FROM NEW IP
+ * STATUS CODE 202 FOR UNFINISHED LOGIN
+ */
+exports.loginUnknownIP = catchAsync(async (req, res, next) => {
+  const { user } = req.userData;
+  if (!user) return next(new AppError('User not found', 404));
+
+  // If guard code is provided, then check if its valid
+  if (req.body.guardCode) {
+    // check if guard code is valid
+    const encryptedGuardCode = crypto
+      .createHash('sha256')
+      .update(req.body.guardCode)
+      .digest('hex');
+    if (
+      encryptedGuardCode === user.guardCode &&
+      user.guardCodeExpires > new Date(Date.now())
+    ) {
+      // unset guard code and add ip to whitelist
+      const updateOperators = {
+        $unset: { guardCode: '', guardCodeExpires: '' },
+        $push: {
+          loggedDevices: {
+            ip: req.ipInfo.ip,
+            location:
+              req.ipInfo.country && req.ipInfo.city
+                ? `${req.ipInfo.city}, ${req.ipInfo.country}`
+                : 'unknown',
+            os: req.useragent.os,
+            platform: req.useragent.platform,
+            browser: req.useragent.browser,
+            lastActivity: new Date(Date.now()),
+          },
+        },
+      };
+
+      // if user is activting again then send email and change status to Active
+      if (req.userData.inactive) {
+        try {
+          const url = `${process.env.WEBSITE_DOMAIN}`;
+          await new Email(user, url).sendWelcomeBack();
+        } catch (error) {
+          storeError('email', error).catch(() => {});
+        }
+        updateOperators.$set = { status: 'Active' };
+      }
+
+      // update user
+      const updatedUser = await User.findByIdAndUpdate(
+        user.id,
+        updateOperators,
+        { new: true }
+      );
+      sendResponseWithToken(updatedUser, req, res, 200);
+    } else {
+      return next(new AppError('Invalid Guard Code', 400));
+    }
+
+    // if guard code is not provided, then server will attempt to send new one
+  } else {
+    // check if user already has guard code and if not expired yet
+    if (user.guardCode && new Date(Date.now()) < user.guardCodeExpires) {
+      return res.status(202).json({
+        status: 'success',
+        message: `We already sent you guard code. Check your inbox and enter guard code to login. If u did not receive email, try again in ${Math.ceil(
+          (user.guardCodeExpires.getTime() - Date.now()) / 1000 / 60
+        )} minutes`,
+      });
+    }
+
+    // genereate guard code data (guardCode, guardCodeExpires, encryptedGuardCode)
+    const guardCodeData = user.getGuardCodeData();
+
+    // update user with generated guard code
+    await User.findByIdAndUpdate(user.id, {
+      guardCode: guardCodeData.encryptedGuardCode,
+      guardCodeExpires: guardCodeData.guardCodeExpires,
+    });
+
+    // send email to user with guard code
+    try {
+      const ipData = {
+        ip: req.ipInfo.ip,
+        country: req.ipInfo.country,
+        guardCode: guardCodeData.guardCode,
+      };
+      const url = `${process.env.WEBSITE_DOMAIN}`;
+      await new Email(user, url, ipData).sendGuardCode();
+      res.status(202).json({
+        status: 'success',
+        message:
+          'Your device is not recognised. We sent guard code to your email. Please enter guard code to finish login',
+      });
+    } catch (error) {
+      storeError('email', error).catch(() => {});
+      // remove guard code from db if fail to send email
+      await User.findByIdAndUpdate(user.id, {
+        $unset: { guardCode: '', guardCodeExpires: '' },
+      });
+      next(error);
     }
   }
 });
@@ -269,14 +485,19 @@ exports.logout = (req, res) => {
   res.status(200).json({ status: 'success' });
 };
 
+/**
+ * PASSWORD
+ */
 exports.forgotPassword = catchAsync(async (req, res, next) => {
   // 1) Get user based on POSTed email
   const user = await User.findOne({ email: req.body.email });
   if (!user) return next(new AppError('Invalid email address', 404));
-  // 1) Generate the random reset token
+
+  // 2) Generate the random reset token
   const resetToken = user.createPasswordResetToken();
   await user.save({ validateBeforeSave: false });
-  // 2) Send email to user with token
+
+  // 3) Send email to user with token
   try {
     const resetURL = `${process.env.WEBSITE_PASSWORD_RESET}${resetToken}`;
     if (req.forgotPassword) await new Email(user, resetURL).sendPasswordReset();
@@ -318,9 +539,21 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
   user.passwordConfirm = req.body.passwordConfirm;
   user.passwordResetToken = undefined;
   user.passwordResetExpires = undefined;
+
+  // remove all Ip from whitelist except ip from request
+  user.loggedDevices = [
+    {
+      ip: req.ipInfo.ip,
+      location: `${req.ipInfo.city}, ${req.ipInfo.country}`,
+      os: req.useragent.os,
+      platform: req.useragent.platform,
+      browser: req.useragent.browser,
+      lastActivity: new Date(Date.now()),
+    },
+  ];
   await user.save();
-  // 3) Update changedPasswordAt property for the user
-  // 4) Inform user that his password has been reset
+
+  // 3) Inform user that his password has been reset
   res.status(200).json({
     status: 'success',
     message: 'Your password has been reset successfully.',
@@ -358,22 +591,6 @@ exports.updatePassword = catchAsync(async (req, res, next) => {
   sendResponseWithToken(user, req, res, 200);
 });
 
-exports.deletePendingUser = catchAsync(async (req, res, next) => {
-  const { emailToken } = req.params;
-  const confirmationToken = crypto
-    .createHash('sha256')
-    .update(emailToken)
-    .digest('hex');
-  const user = await User.findOneAndDelete({
-    confirmationToken,
-    status: 'Pending',
-  });
-  if (!user) return next(new AppError('User not found.', 404));
-  res.status(204).json({
-    status: 'success',
-  });
-});
-
 exports.checkPassword = catchAsync(async (req, res, next) => {
   const { password } = req.body;
   if (!password)
@@ -389,6 +606,9 @@ exports.checkPassword = catchAsync(async (req, res, next) => {
   next();
 });
 
+/**
+ * PIN
+ */
 const handleWrongPin = async (user) => {
   if (
     user.pinLastWrongDate &&

@@ -9,6 +9,8 @@ const xss = require('xss-clean');
 const hpp = require('hpp');
 const compression = require('compression');
 const helmet = require('helmet');
+const expressip = require('express-ip');
+const useragent = require('express-useragent');
 const userRouter = require('./routes/user.routes');
 const accounstRouter = require('./routes/accounts.routes');
 const globalErrorHandler = require('./controllers/error.controller');
@@ -50,6 +52,10 @@ app.use(xss());
 
 // Prevent parameter pollution
 app.use(hpp());
+
+// IP Info
+app.use(expressip().getIpInfoMiddleware);
+app.use(useragent.express());
 
 app.use(compression());
 

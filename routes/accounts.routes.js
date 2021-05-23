@@ -4,7 +4,7 @@ const accountController = require('../controllers/account.controller');
 
 const router = express.Router();
 
-router.use(authController.protect);
+router.use(authController.protect, authController.ipProtect);
 router
   .route('/')
   .get(accountController.getAccounts)

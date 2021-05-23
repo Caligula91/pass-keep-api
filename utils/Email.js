@@ -3,11 +3,13 @@ const pug = require('pug');
 const { htmlToText } = require('html-to-text');
 
 module.exports = class Email {
-  constructor(user, url) {
+  // data contains ip info and guard code
+  constructor(user, url, data) {
     this.to = user.email;
     this.firstName = user.name.split(' ')[0];
     this.url = url;
     this.from = `PassKeep <${process.env.EMAIL_FROM}>`;
+    this.data = data;
   }
 
   newTransport() {
@@ -40,6 +42,7 @@ module.exports = class Email {
     const html = pug.renderFile(`${__dirname}/../views/email/${template}.pug`, {
       firstName: this.firstName,
       url: this.url,
+      data: this.data,
       subject,
     });
 
@@ -80,5 +83,9 @@ module.exports = class Email {
 
   async sendWelcomeBack() {
     await this.send('welcomeBack', 'Welcome Back');
+  }
+
+  async sendGuardCode() {
+    await this.send('guardCode', 'Access from new computer');
   }
 };

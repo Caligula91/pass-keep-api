@@ -55,6 +55,7 @@ exports.deactivateMe = catchAsync(async (req, res, next) => {
     req.user.id,
     {
       status: 'Inactive',
+      $unset: { loggedDevices: '' },
     },
     {
       new: true,

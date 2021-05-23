@@ -18,7 +18,7 @@ router.post(
   authController.reSendEmailProtect,
   authController.reSendEmailConfirm
 );
-router.post('/login', authController.login);
+router.post('/login', authController.login, authController.loginUnknownIP);
 router.get('/logout', authController.logout);
 router.post('/forgot-password', authController.forgotPassword);
 router.patch('/reset-password/:token', authController.resetPassword);
@@ -26,7 +26,7 @@ router.patch('/reset-password/:token', authController.resetPassword);
 /**
  * PROTECTED ROUTES
  */
-router.use(authController.protect);
+router.use(authController.protect, authController.ipProtect);
 router.route('/me').get(userController.getMe).patch(userController.updateMe);
 router.patch('/me/deactivate', userController.deactivateMe);
 router.post(
@@ -40,6 +40,7 @@ router.patch(
   authController.checkPassword,
   authController.resetPin
 );
+router.patch('/me/remove-ip', authController.removeIp);
 
 /**
  * ADMIN ROUTES

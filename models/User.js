@@ -120,6 +120,7 @@ const userSchema = new mongoose.Schema(
     ],
     lastCheckedAccount: String,
     lastCheckedAccountDate: Date,
+
     // PIN
     pin: {
       type: String,
@@ -152,6 +153,21 @@ const userSchema = new mongoose.Schema(
       type: Number,
       select: false,
     },
+
+    // IP
+    loggedDevices: [
+      {
+        ip: String,
+        location: String,
+        os: String,
+        platform: String,
+        browser: String,
+        lastActivity: Date,
+      },
+    ],
+
+    guardCode: String,
+    guardCodeExpires: Date,
   },
   {
     toJSON: { virtuals: true },
@@ -269,6 +285,20 @@ userSchema.methods.getEmailConfirmToken = function () {
     .digest('hex');
   this.confirmationTokenExpires = Date.now() + 10 * 60 * 1000;
   return emailToken;
+};
+
+userSchema.methods.getGuardCodeData = function () {
+  const guardCode = crypto.randomBytes(3).toString('hex').toUpperCase();
+  const encryptedGuardCode = crypto
+    .createHash('sha256')
+    .update(guardCode)
+    .digest('hex');
+  const guardCodeExpires = Date.now() + 10 * 60 * 1000;
+  return {
+    guardCode,
+    encryptedGuardCode,
+    guardCodeExpires,
+  };
 };
 
 const User = mongoose.model('User', userSchema);
