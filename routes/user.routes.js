@@ -40,7 +40,10 @@ router.patch(
   authController.checkPassword,
   authController.resetPin
 );
-router.patch('/me/remove-ip/:loggedDeviceId', authController.removeIp);
+router.patch(
+  '/me/remove-device/:loggedDeviceId',
+  authController.removeLoggedDevice
+);
 
 /**
  * ADMIN ROUTES

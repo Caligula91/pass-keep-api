@@ -86,6 +86,6 @@ module.exports = class Email {
   }
 
   async sendGuardCode() {
-    await this.send('guardCode', 'Access from new computer');
+    await this.send('guardCode', 'Access from new computer or location');
   }
 };

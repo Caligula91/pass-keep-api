@@ -157,6 +157,7 @@ const userSchema = new mongoose.Schema(
     // IP
     loggedDevices: [
       {
+        deviceId: String,
         ip: String,
         location: String,
         os: String,

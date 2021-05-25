@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const hash = require('object-hash');
 const User = require('../models/User');
 const catchAsync = require('../utils/catchAsync');
 const Email = require('../utils/Email');
@@ -41,7 +42,12 @@ const sendResponseWithToken = (user, req, res, statusCode) => {
  * CHECK TRUSTED DEVICE
  */
 const isTrustedDevice = (device, req) =>
-  device.ip === req.ipInfo.ip && device.platform === req.useragent.platform;
+  device.ip === req.ipInfo.ip && device.deviceId === hash(req.useragent);
+
+/**
+ * GET UNIQUE VALUE FROM USERAGENT INFO
+ */
+const getDeviceId = (useragent) => hash(useragent);
 
 exports.restrictTo = (roles) => (req, res, next) => {
   if (roles.includes(req.user.role)) return next();
@@ -101,38 +107,38 @@ exports.ipProtect = (req, res, next) => {
   const trustedDevice = req.user.loggedDevices
     ? req.user.loggedDevices.find((device) => isTrustedDevice(device, req))
     : false;
+  if (trustedDevice) {
+    // set current device on req object
+    req.currentDevice = trustedDevice;
 
-  // update last activity
-  // no need to await results, update in the background
-  // tolerate 2 mins diff from last activity to increase performance
-  if (
-    trustedDevice &&
-    Date.now() > trustedDevice.lastActivity.getTime() + 2 * 60 * 1000
-  ) {
-    User.findOneAndUpdate(
-      {
-        _id: req.user.id,
-        'loggedDevices._id': trustedDevice.id,
-      },
-      {
-        'loggedDevices.$.lastActivity': Date.now(),
-      },
-      (err) => {
-        if (err) storeError('lastActivity', err).catch(() => {});
-      }
-    );
-  }
-  return trustedDevice
-    ? next()
-    : next(
-        new AppError('Your device is not recognised, please log in again.', 403)
+    // update last activity
+    // no need to await results, update in the background
+    // tolerate 1 min diff from last activity to increase performance
+    if (Date.now() > trustedDevice.lastActivity.getTime() + 1 * 60 * 1000) {
+      User.findOneAndUpdate(
+        {
+          _id: req.user.id,
+          'loggedDevices._id': trustedDevice.id,
+        },
+        {
+          'loggedDevices.$.lastActivity': Date.now(),
+        },
+        (err) => {
+          if (err) storeError('lastActivity', err).catch(() => {});
+        }
       );
+    }
+    return next();
+  }
+  next(
+    new AppError('Your device is not recognised, please log in again.', 403)
+  );
 };
 
 /**
- * REMOVE IP
+ * REMOVE LOGGED DEVICE
  */
-exports.removeIp = catchAsync(async (req, res, next) => {
+exports.removeLoggedDevice = catchAsync(async (req, res, next) => {
   const { loggedDeviceId } = req.params;
   const user = await User.findOneAndUpdate(
     {
@@ -150,6 +156,8 @@ exports.removeIp = catchAsync(async (req, res, next) => {
   res.status(200).json({
     status: 'success',
     message: 'Device removed from logged devices.',
+    user,
+    currentDevice: req.currentDevice,
   });
 });
 
@@ -224,6 +232,7 @@ exports.verifyEmail = catchAsync(async (req, res, next) => {
   // add logged device to loggedDevices
   user.loggedDevices = [
     {
+      deviceId: getDeviceId(req.useragent),
       ip: req.ipInfo.ip,
       location:
         req.ipInfo.country && req.ipInfo.city
@@ -396,6 +405,7 @@ exports.loginUnknownIP = catchAsync(async (req, res, next) => {
         $unset: { guardCode: '', guardCodeExpires: '' },
         $push: {
           loggedDevices: {
+            deviceId: getDeviceId(req.useragent),
             ip: req.ipInfo.ip,
             location:
               req.ipInfo.country && req.ipInfo.city
@@ -455,6 +465,7 @@ exports.loginUnknownIP = catchAsync(async (req, res, next) => {
     // send email to user with guard code
     try {
       const ipData = {
+        platform: req.useragent.platform,
         ip: req.ipInfo.ip,
         country: req.ipInfo.country,
         guardCode: guardCodeData.guardCode,
@@ -543,6 +554,7 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
   // remove all Ip from whitelist except ip from request
   user.loggedDevices = [
     {
+      deviceId: getDeviceId(req.useragent),
       ip: req.ipInfo.ip,
       location: `${req.ipInfo.city}, ${req.ipInfo.country}`,
       os: req.useragent.os,
