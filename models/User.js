@@ -90,12 +90,6 @@ const userSchema = new mongoose.Schema(
           ],
           select: false,
         },
-        iv: {
-          type: String,
-          required: true,
-          select: false,
-        },
-        //
         image: {
           type: String,
           default: function () {
