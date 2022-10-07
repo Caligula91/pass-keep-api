@@ -42,7 +42,7 @@ const sendResponseWithToken = (user, req, res, statusCode) => {
  * CHECK TRUSTED DEVICE
  */
 const isTrustedDevice = (device, req) =>
-  device.ip === req.ipInfo.ip && device.deviceId === hash(req.useragent);
+  device.deviceId === hash(req.useragent);
 
 /**
  * GET UNIQUE VALUE FROM USERAGENT INFO
