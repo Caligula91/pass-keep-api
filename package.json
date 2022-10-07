@@ -5,10 +5,10 @@
   "main": "index.js",
   "scripts": {
     "test": "node ./dev-data/resize.js",
-    "start": "node server.js",
-    "dev": "nodemon server.js",
-    "start:prod": "set NODE_ENV=production& nodemon server.js",
-    "debug": "ndb server.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "start:prod": "set NODE_ENV=production& nodemon index.js",
+    "debug": "ndb index.js"
   },
   "author": "Mihajlo Nikolic",
   "license": "ISC",
