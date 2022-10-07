@@ -3,14 +3,14 @@
     "name": "pass-keep",
     "builds": [
         {
-            "src": "./server.js",
-            "use": "@vercel/node"
+            "src": "server.js",
+            "use": "@now/node"
         }
     ],
     "routes": [
         {
             "src": "/(.*)",
-            "dest": "/"
+            "dest": "server.js"
         }
     ]
 }
