@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-require('dotenv').config({ path: ' /etc/secrets/production.env' });
+require('dotenv').config({ path: './config.env' });
 
 process.on('uncaughtException', (err) => {
   console.log('UNCAUGHT EXCEPTION! 💥 Shutting down...');
@@ -9,13 +9,8 @@ process.on('uncaughtException', (err) => {
 
 const app = require('./app');
 
-console.log(process.env);
-const DB = process.env.DATABASE.replace(
-  '<PASSWORD>',
-  process.env.DATABASE_PASSWORD
-);
 mongoose
-  .connect(DB, {
+  .connect(process.env.DATABASE, {
     autoIndex: true,
     useNewUrlParser: true,
     useCreateIndex: true,

@@ -9,7 +9,7 @@ const storeError = require('../utils/storeError');
 
 const signToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_DURATION,
+    expiresIn: '90d',
   });
 
 const sendResponseWithToken = (user, req, res, statusCode) => {
@@ -17,7 +17,7 @@ const sendResponseWithToken = (user, req, res, statusCode) => {
   const cookieOptions = {
     expires: new Date(
       // 1 hour
-      Date.now() + process.env.JWT_COOKIE_EXPIRES_IN * 60 * 60 * 1000
+      Date.now() + 2160 * 60 * 60 * 1000
     ),
     httpOnly: true,
     secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
@@ -170,7 +170,7 @@ exports.signup = catchAsync(async (req, res, next) => {
   const emailToken = user.getEmailConfirmToken();
   await user.save();
   user.password = undefined;
-  const url = `${process.env.WEBSITE_EMAIL_CONFIRM}${emailToken}`;
+  const url = `${process.env.WEBSITE_DOMAIN}email-confirmation/${emailToken}`;
   try {
     await new Email(user, url).sendConfirmation();
   } catch (error) {
@@ -262,7 +262,7 @@ exports.reSendEmailConfirm = catchAsync(async (req, res, next) => {
   const { user } = req;
   const emailToken = user.getEmailConfirmToken();
   await user.save({ validateModifiedOnly: true });
-  const url = `${process.env.WEBSITE_EMAIL_CONFIRM}${emailToken}`;
+  const url = `${process.env.WEBSITE_DOMAIN}email-confirmation/${emailToken}`;
   try {
     await new Email(user, url).sendConfirmation();
   } catch (error) {
@@ -510,7 +510,7 @@ exports.forgotPassword = catchAsync(async (req, res, next) => {
 
   // 3) Send email to user with token
   try {
-    const resetURL = `${process.env.WEBSITE_PASSWORD_RESET}${resetToken}`;
+    const resetURL = `${process.env.WEBSITE_DOMAIN}reset-password/${resetToken}`;
     if (req.forgotPassword) await new Email(user, resetURL).sendPasswordReset();
     else await new Email(user, resetURL).sendPasswordResetRequest();
     res.status(200).json({
